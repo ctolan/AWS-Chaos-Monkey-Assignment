@@ -33,22 +33,25 @@ response = client.describe_instances(
 instances = response ['Reservations']
 myarray = np.asarray(instances)
 
-pprint.pprint("You have %i AWS instances, the Id(s) are:" % (len(myarray)))
+pprint.pprint("You have %i running AWS instances, the Id(s) are:" % (len(myarray)))
 for instance in response ['Reservations']:
-    pprint.pprint("    "+instance['Instances'][0]['InstanceId'])
+    print("    "+instance['Instances'][0]['InstanceId'])
+
+UserInterupted = input("How many instances would you like to disrupt?")
+
+shuffled = input("How many times would you like to shuffle the instance order?")
 
 pprint.pprint("Shuffling order to introduce randomness")
-shuffled = input("How many times would you like to shuffle the instance order?")
 
 for i in range (0, int(shuffled)):
     print("Shuffling")
     random.shuffle(instances)
 
+pprint.pprint("The randomised order is:")
 for instance in response ['Reservations']:
-    pprint.pprint("    "+instance['Instances'][0]['InstanceId'])
+    print("    "+instance['Instances'][0]['InstanceId'])
 
 
-UserInterupted = input("How many instances would you like to disrupt?")
 
 
 #pprint.pprint(type(instances))
@@ -57,47 +60,59 @@ healthBefore = client.describe_instance_status(
     IncludeAllInstances=True
 )
 
-for instanceHealth in healthBefore:
-    pprint.pprint(instanceHealth['InstanceStatuses']['InstanceState']['Name'])
+RunningAfterCounter = 0
+RunningBeforeCounter = 0
+InstancesNotRestarted = []
+
+for instanceHealth in healthBefore["InstanceStatuses"]:
+    if instanceHealth['InstanceState']['Name'] == "running":
+        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+        RunningBeforeCounter += 1
+    else:
+        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+        InstancesNotRestarted += instanceHealth['InstanceId']
+
+
+start_time = time.time()
 
 for i in range (0, int(UserInterupted)):
-    pprint.pprint("Terminating instance id"+instances[i]['Instances'][0]['InstanceId'])
-    pprint.pprint(client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']]))
+    pprint.pprint("Terminating instance: "+instances[i]['Instances'][0]['InstanceId'])
+    #pprint.pprint(client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']]))
+    client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']])
 
 
-
-pprint.pprint("Please wait will wait for AWS instances to restart:")
+pprint.pprint("[Start] Timing AWS instances recovery:")
 time.sleep(15)
 
-healthAfter = client.describe_instance_status(
-    IncludeAllInstances=True
-)
-
-NewResponse = ""
-
-for instanceHealth in healthAfter:
-    pprint.pprint(instanceHealth['InstanceStatuses']['InstanceState']['Name'])
-
-while len(response) != len(NewResponse):
-    pprint.pprint("Checking for new AWS instances:")
+i = 0
+progress = "- "
+increment = "- "
+while RunningBeforeCounter != RunningAfterCounter:
     healthAfter = client.describe_instance_status(
         IncludeAllInstances=True
     )
-    NewResponse = client.describe_instances(
-        Filters=[
-            {
-                'Name': 'instance-state-name',
-                'Values': ['running']
-            },
-        ],
-    )
-    print("Instances running: "+str(len(NewResponse)))
+    RunningAfterCounter = 0
 
-    pprint.pprint("Current instances:")
-    for instance in NewResponse ['Reservations']:
-        pprint.pprint("    "+instance['Instances'][0]['InstanceId'])
+    for instanceHealth in healthAfter["InstanceStatuses"]:
+        if instanceHealth['InstanceState']['Name'] == "running":
+            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+            RunningAfterCounter += 1
+        else:
+            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+            InstancesNotRestarted += instanceHealth['InstanceId']
 
-    time.sleep(15)
+    progress = progress + increment
+    if len(progress) > 50:
+        elapsed_time = time.time() - start_time
+        pprint.pprint("Test of instances recovery failed")
+        pprint.pprint("The instances did not recover withing the allowed time")
+        pprint.pprint("Timing elapsed: " + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
+    print(progress)
+    time.sleep(10)
+
+elapsed_time = time.time() - start_time
+
+pprint.pprint("Timing elapsed for recovery from disruption: " + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
 
 
 #for instance in response ['Reservations']:
