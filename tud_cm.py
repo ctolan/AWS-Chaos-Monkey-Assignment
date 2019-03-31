@@ -22,11 +22,6 @@ response = client.describe_instances(
     ],
 )
 
-#pprint.pprint(response['Reservations'][0]['Instances'][0].items())
-#pprint.pprint(response['Reservations'][0]['Instances'][0])
-#pprint.pprint(response['Reservations'][0])
-#pprint.pprint(response['Reservations'][1])
-
 instances = response ['Reservations']
 myarray = np.asarray(instances)
 
@@ -47,11 +42,6 @@ for i in range (0, int(shuffled)):
 pprint.pprint("The randomised order is:")
 for instance in response ['Reservations']:
     print("    "+instance['Instances'][0]['InstanceId'])
-
-
-
-
-#pprint.pprint(type(instances))
 
 healthBefore = client.describe_instance_status(
     IncludeAllInstances=True
@@ -74,7 +64,6 @@ start_time = time.time()
 
 for i in range (0, int(UserInterupted)):
     pprint.pprint("Terminating instance: "+instances[i]['Instances'][0]['InstanceId'])
-    #pprint.pprint(client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']]))
     client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']])
 
 
@@ -112,7 +101,7 @@ elapsed_time = time.time() - start_time
 pretty_time = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
 TestStatus = "Passed"
 
-pprint.pprint("Timing elapsed for recovery from disruption: " + pretty_time)
+pprint.pprint("[Finish] Timing elapsed for recovery from disruption: " + pretty_time)
 
 message = "Test Status: %s \
     \nTest completed in %s\
@@ -135,13 +124,10 @@ body = { "message": message,
   ]
 }
 
-r = requests.post(uri , json=body)
-if response.status_code == 200:
+response = requests.post(uri , json=body)
+if response.status_code == 204:
     print('Lambda Email sent successfully')
 else:
     print('An error occurred sending reaching the lambda.')
 
 sns_Sender(message, TestStatus)
-
-#for instance in response ['Reservations']:
-#    pprint.pprint(client.terminate_instances(InstanceIds=[instance['Instances'][0]['InstanceId']]))
