@@ -3,9 +3,8 @@ import time
 import pprint
 import numpy as np
 import random
-import json
+import requests
 from random import shuffle
-
 
 print("\n")
 pprint.pprint("Welcome to TUD Chaos Monkey by Conor Tolan")
@@ -27,8 +26,6 @@ response = client.describe_instances(
 #pprint.pprint(response['Reservations'][0]['Instances'][0])
 #pprint.pprint(response['Reservations'][0])
 #pprint.pprint(response['Reservations'][1])
-#responseJson = json.dumps(responseDict)
-#responseObj = json.loads(responseJson)
 
 instances = response ['Reservations']
 myarray = np.asarray(instances)
@@ -104,6 +101,7 @@ while RunningBeforeCounter != RunningAfterCounter:
     progress = progress + increment
     if len(progress) > 50:
         elapsed_time = time.time() - start_time
+        TestStatus = "Failed"
         pprint.pprint("Test of instances recovery failed")
         pprint.pprint("The instances did not recover withing the allowed time")
         pprint.pprint("Timing elapsed: " + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
@@ -111,9 +109,39 @@ while RunningBeforeCounter != RunningAfterCounter:
     time.sleep(10)
 
 elapsed_time = time.time() - start_time
+pretty_time = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
+TestStatus = "Passed"
 
-pprint.pprint("Timing elapsed for recovery from disruption: " + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
+pprint.pprint("Timing elapsed for recovery from disruption: " + pretty_time)
 
+message = "Test Status: %s \
+    \nTest completed in %s\
+    \nInstances recovered %s\
+    \n--------------------------" % (TestStatus, pretty_time, UserInterupted)
+
+def sns_Sender(message, TestStatus):
+    sns = boto3.client('sns')
+    sns.publish(
+        TopicArn = 'arn:aws:sns:eu-west-1:535132083307:ChaosMonkeyResults-Conor',
+        Subject = 'Test Status: ' + TestStatus,
+        Message = message
+    )
+
+uri = "https://i3ncbf7vpc.execute-api.eu-west-1.amazonaws.com/Prod/send"
+body = { "message": message,
+  "subject": 'Test Status: ' + TestStatus,
+  "toEmails": [
+    "ctolan@gmail.com"
+  ]
+}
+
+r = requests.post(uri , json=body)
+if response.status_code == 200:
+    print('Lambda Email sent successfully')
+else:
+    print('An error occurred sending reaching the lambda.')
+
+sns_Sender(message, TestStatus)
 
 #for instance in response ['Reservations']:
 #    pprint.pprint(client.terminate_instances(InstanceIds=[instance['Instances'][0]['InstanceId']]))
