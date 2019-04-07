@@ -29,6 +29,10 @@ myarray = np.asarray(instances)
 AZs = []
 
 pprint.pprint("You have %i running AWS instances, the Id(s) are:" % (len(myarray)))
+if len(myarray) == 0:
+    pprint.pprint("Quitting")
+    quit()
+
 for instance in response ['Reservations']:
     thisAZ = instance['Instances'][0]['Placement']['AvailabilityZone']
     print("    "+instance['Instances'][0]['InstanceId']+"   AZ: "+str(thisAZ))
