@@ -7,9 +7,10 @@ response = client.update_auto_scaling_group(
     MinSize=0,
     MaxSize=0
 )
-
-#response = client.set_desired_capacity(
-#    AutoScalingGroupName='CM_ASG',
-#    DesiredCapacity=3,
-#    HonorCooldown=False
-#)
+"""
+response = client.set_desired_capacity(
+    AutoScalingGroupName='CM_ASG',
+    DesiredCapacity=3,
+    HonorCooldown=False
+)
+"""
