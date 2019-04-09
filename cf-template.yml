@@ -11,7 +11,7 @@
     "PowerShellPost" : {
       "Type" : "AWS::Serverless::Function",
       "Properties": {
-        "Handler": "PSWebCalculator::PSWebCalculator.Bootstrap::ExecuteFunction",
+        "Handler": "PowerShellSESLambda::PowerShellSESLambda.Bootstrap::ExecuteFunction",
         "Runtime": "dotnetcore2.1",
         "CodeUri": "s3://ctbowershelllambda/PowerShellSESLambda.zip",
         "MemorySize": 512,

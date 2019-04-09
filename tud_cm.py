@@ -123,11 +123,10 @@ while RunningBeforeCounter != RunningAfterCounter:
     RunningAfterCounter = 0
 
     for instanceHealth in healthAfter["InstanceStatuses"]:
+        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
         if instanceHealth['InstanceState']['Name'] == "running":
-            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
             RunningAfterCounter += 1
         else:
-            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
             InstancesNotRestarted += instanceHealth['InstanceId']
 
     progress = progress + increment
