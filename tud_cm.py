@@ -1,14 +1,15 @@
 import boto3
 import time
+import sys
 import pprint
-import numpy as np
+import json
 import random
 import requests
 from random import shuffle
 
 print("\n")
 pprint.pprint("Welcome to TUD Chaos Monkey by Conor Tolan")
-print("The following program will intentionally disrupt you AWS instances,")
+print("The following program will intentionally disrupt your AWS instances,")
 print("please ensure you are authorised to execute these changes.")
 print("\n")
 
@@ -23,54 +24,94 @@ response = client.describe_instances(
 )
 
 instances = response ['Reservations']
-myarray = np.asarray(instances)
 
-pprint.pprint("You have %i running AWS instances, the Id(s) are:" % (len(myarray)))
+AZs = []
+
+pprint.pprint("You have %i running AWS instances, the Id(s) are:" % (len(instances)))
+if len(instances) == 0:
+    pprint.pprint("Quitting")
+    exit()
+
 for instance in response ['Reservations']:
-    print("    "+instance['Instances'][0]['InstanceId'])
+    thisAZ = instance['Instances'][0]['Placement']['AvailabilityZone']
+    print("    "+instance['Instances'][0]['InstanceId']+"   AZ: "+str(thisAZ))
+    if any(thisAZ not in az for az in AZs):
+        AZs += thisAZ
+Gorilla = False
 
-UserInterupted = input("How many instances would you like to disrupt?")
+if len(sys.argv) == 1:
+    UserInterupted = input("How many instances would you like to disrupt? ")
+    if (len(instances)) <= int(UserInterupted):
+        UserInterupted = len(instances) -1
+        pprint.pprint("Can not interupt all instances, leaving one remaining.")
+else:
+    if sys.argv[1] == "Gorilla":
+        Gorilla = True
+        AzInterupted = input("Which AZ would you like to disrupt? ")
+    else:
+        UserInterupted = sys.argv[1]
+        if (len(instances)) <= int(UserInterupted):
+            UserInterupted = len(instances) -1
+            pprint.pprint("Can not interupt all instances, leaving one remaining.")
 
-shuffled = input("How many times would you like to shuffle the instance order?")
+if Gorilla == False:
+    if len(sys.argv) < 3:
+        shuffled = input("How many times would you like to shuffle the instance order?  ")
+    else:
+        shuffled = sys.argv[2]
 
-pprint.pprint("Shuffling order to introduce randomness")
+    pprint.pprint("Shuffling order to introduce randomness")
+    for i in range (0, int(shuffled)):
+        print("Shuffling")
+        random.shuffle(instances)
 
-for i in range (0, int(shuffled)):
-    print("Shuffling")
-    random.shuffle(instances)
+    pprint.pprint("The randomised order is:")
+    for instance in instances:
+        print("    "+instance['Instances'][0]['InstanceId'])
 
-pprint.pprint("The randomised order is:")
-for instance in response ['Reservations']:
-    print("    "+instance['Instances'][0]['InstanceId'])
 
 healthBefore = client.describe_instance_status(
     IncludeAllInstances=True
 )
 
+TestStatus = ""
+
 RunningAfterCounter = 0
 RunningBeforeCounter = 0
 InstancesNotRestarted = []
 
+pprint.pprint("The before state is:")
 for instanceHealth in healthBefore["InstanceStatuses"]:
     if instanceHealth['InstanceState']['Name'] == "running":
-        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+        pprint.pprint("Instance %s in %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['AvailabilityZone'], instanceHealth['InstanceState']['Name']))
         RunningBeforeCounter += 1
     else:
-        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
+        pprint.pprint("Instance %s in %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['AvailabilityZone'], instanceHealth['InstanceState']['Name']))
         InstancesNotRestarted += instanceHealth['InstanceId']
 
+if RunningBeforeCounter <= 1:
+    pprint.pprint("There are too few instances currently running, none available to be interupted while maintaining service.")
+    TestStatus = "Failed"
+    UserInterupted = 0
 
+InstancesRestarted = 0
 start_time = time.time()
-
-for i in range (0, int(UserInterupted)):
-    pprint.pprint("Terminating instance: "+instances[i]['Instances'][0]['InstanceId'])
-    client.terminate_instances(InstanceIds=[instances[i]['Instances'][0]['InstanceId']])
-
-
 pprint.pprint("[Start] Timing AWS instances recovery:")
-time.sleep(15)
 
-i = 0
+if Gorilla == True:
+    for instanceHealth in healthBefore["InstanceStatuses"]:
+        if instanceHealth['InstanceState']['Name'] == "running":
+            if instanceHealth['AvailabilityZone'] == AzInterupted:
+                pprint.pprint("Terminating instance: "+instanceHealth['InstanceId'])
+                client.terminate_instances(InstanceIds=[instanceHealth['InstanceId']])
+                InstancesRestarted += 1
+else:
+    for i in range (0, int(UserInterupted)):
+        if instanceHealth['InstanceState']['Name'] == "running":
+            pprint.pprint("Terminating instance: "+instances[i]["Instances"][0]['InstanceId'])
+            client.terminate_instances(InstanceIds=[instances[i]["Instances"][0]['InstanceId']])
+            InstancesRestarted += 1
+
 progress = "- "
 increment = "- "
 while RunningBeforeCounter != RunningAfterCounter:
@@ -80,33 +121,39 @@ while RunningBeforeCounter != RunningAfterCounter:
     RunningAfterCounter = 0
 
     for instanceHealth in healthAfter["InstanceStatuses"]:
+        pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
         if instanceHealth['InstanceState']['Name'] == "running":
-            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
             RunningAfterCounter += 1
         else:
-            pprint.pprint("Instance %s is in state %s" % (instanceHealth['InstanceId'], instanceHealth['InstanceState']['Name']))
             InstancesNotRestarted += instanceHealth['InstanceId']
 
     progress = progress + increment
+    # Length of 50 ~ 4 min / 250 seconds.
     if len(progress) > 50:
         elapsed_time = time.time() - start_time
         TestStatus = "Failed"
         pprint.pprint("Test of instances recovery failed")
         pprint.pprint("The instances did not recover withing the allowed time")
         pprint.pprint("Timing elapsed: " + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
+        break
     print(progress)
-    time.sleep(10)
+    if TestStatus != "Failed":
+        time.sleep(10)
 
 elapsed_time = time.time() - start_time
 pretty_time = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
-TestStatus = "Passed"
+
+if TestStatus != "Failed":
+    TestStatus = "Passed"
 
 pprint.pprint("[Finish] Timing elapsed for recovery from disruption: " + pretty_time)
 
-message = "Test Status: %s \
+message = "Conor's Chaos Test Status: %s \
     \nTest completed in %s\
     \nInstances recovered %s\
-    \n--------------------------" % (TestStatus, pretty_time, UserInterupted)
+    \n--------------------------" % (TestStatus, pretty_time, InstancesRestarted)
+
+pprint.pprint(message)
 
 def sns_Sender(message, TestStatus):
     sns = boto3.client('sns')
@@ -115,19 +162,17 @@ def sns_Sender(message, TestStatus):
         Subject = 'Test Status: ' + TestStatus,
         Message = message
     )
+sns_Sender(message, TestStatus)
+print('SNS topic notification sent successfully')
 
-uri = "https://i3ncbf7vpc.execute-api.eu-west-1.amazonaws.com/Prod/send"
+# My API Gatewat URI
+uri = "https://z83w6zwpo7.execute-api.eu-west-1.amazonaws.com/default/PowerShellLambda-PowerShellPost"
 body = { "message": message,
-  "subject": 'Test Status: ' + TestStatus,
+  "subject": "Conors Chaos Test Status: " + TestStatus,
   "toEmails": [
-    "ctolan@gmail.com"
+    "ctolan@gmail.com", "tud.devops.cm@gmail.com"
   ]
 }
 
 response = requests.post(uri , json=body)
-if response.status_code == 204:
-    print('Lambda Email sent successfully')
-else:
-    print('An error occurred sending reaching the lambda.')
-
-sns_Sender(message, TestStatus)
+print('Lambda email sent successfully')
